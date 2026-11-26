@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ridge Runner — Alpine Ring Run</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; background: #0e1a24; }
+  #gl { display: block; width: 100vw; height: 100vh; touch-action: none; }
+  #hud {
+    position: fixed; inset: 0; pointer-events: none;
+    font-family: "Segoe UI", system-ui, -apple-system, sans-serif; color: #eef4f8;
+    text-shadow: 0 1px 3px rgba(0, 0, 0, .65);
+  }
+  .row { position: absolute; display: flex; gap: 10px; }
+  .row.top-left { top: 14px; left: 16px; }
+  .row.top-right { top: 14px; right: 16px; }
+  .gauge {
+    background: rgba(8, 22, 32, .55); border: 1px solid rgba(255, 255, 255, .28);
+    border-radius: 8px; padding: 7px 12px 6px; min-width: 86px;
+    backdrop-filter: blur(2px);
+  }
+  .gauge .label { font-size: 10px; letter-spacing: .14em; opacity: .75; text-transform: uppercase; }
+  .gauge .value { font-size: 21px; font-weight: 650; font-variant-numeric: tabular-nums; line-height: 1.15; }
+  .gauge .value.low { color: #ff9a7a; }
+  #hud-beacon {
+    position: absolute; top: 78px; left: 50%; transform: translateX(-50%);
+    font-size: 15px; font-weight: 600; letter-spacing: .04em;
+    background: rgba(8, 22, 32, .55); border: 1px solid rgba(255, 211, 77, .55);
+    color: #ffd34d; border-radius: 20px; padding: 6px 16px; display: none;
+  }
+  #hud-msg {
+    position: absolute; bottom: 118px; left: 50%; transform: translateX(-50%);
+    font-size: 18px; font-weight: 600; opacity: 0; transition: opacity .4s;
+    background: rgba(8, 22, 32, .6); border-radius: 8px; padding: 8px 18px;
+    max-width: 80vw; text-align: center;
+  }
+  #hud-msg.show { opacity: 1; }
+  #panel {
+    position: absolute; left: 16px; bottom: 12px;
+    display: none; align-items: center; gap: 14px;
+    background: rgba(10, 18, 26, .78); border: 1px solid rgba(255, 255, 255, .25);
+    border-radius: 12px; padding: 8px 16px;
+  }
+  #horizon { width: 120px; height: 120px; }
+  .panel-read { font-size: 13px; line-height: 1.7; font-variant-numeric: tabular-nums; }
+  .panel-read b { color: #ffd34d; }
+  #screen {
+    position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+    background: linear-gradient(180deg, rgba(6, 16, 26, .55), rgba(6, 16, 26, .78));
+    pointer-events: none; z-index: 5;
+  }
+  #screen.hidden { display: none; }
+  .card {
+    max-width: 560px; margin: 20px; padding: 30px 36px 24px; text-align: center;
+    background: rgba(8, 20, 30, .82); border: 1px solid rgba(255, 255, 255, .22);
+    border-radius: 16px; color: #eef4f8;
+    font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+  }
+  .card h1 { margin: 0 0 2px; font-size: 44px; letter-spacing: .06em; color: #ffd34d; }
+  .card .sub { margin: 0 0 14px; letter-spacing: .22em; text-transform: uppercase; font-size: 12px; opacity: .8; }
+  .card p { font-size: 15px; line-height: 1.55; margin: 10px 0; }
+  .card .controls { font-size: 14px; background: rgba(255, 255, 255, .07); border-radius: 10px; padding: 10px 14px; }
+  .card .big { font-size: 22px; font-weight: 700; }
+  .card .best { color: #9fd8a8; font-weight: 600; }
+  .card .hint { margin-top: 16px; font-size: 13px; letter-spacing: .12em; text-transform: uppercase; opacity: .75; animation: pulse 1.6s infinite; }
+  @keyframes pulse { 0%, 100% { opacity: .45; } 50% { opacity: .9; } }
+</style>
+</head>
+<body>
+<canvas id="gl"></canvas>
+<div id="hud">
+  <div class="row top-left">
+    <div class="gauge"><div class="label">Altitude</div><div class="value" id="hud-alt">0 ft</div></div>
+    <div class="gauge"><div class="label">Airspeed</div><div class="value" id="hud-spd">0 kt</div></div>
+    <div class="gauge"><div class="label">Heading</div><div class="value" id="hud-hdg">000° N</div></div>
+    <div class="gauge"><div class="label">Vert speed</div><div class="value" id="hud-vs">+0 fpm</div></div>
+  </div>
+  <div class="row top-right">
+    <div class="gauge"><div class="label">Throttle</div><div class="value" id="hud-thr">0%</div></div>
+    <div class="gauge"><div class="label">Score</div><div class="value" id="hud-score">0</div></div>
+    <div class="gauge"><div class="label">Rings</div><div class="value" id="hud-rings">0/8</div></div>
+    <div class="gauge"><div class="label">Time</div><div class="value" id="hud-time">6:00</div></div>
+  </div>
+  <div id="hud-beacon"></div>
+  <div id="hud-msg"></div>
+  <div id="panel">
+    <canvas id="horizon" width="150" height="150"></canvas>
+    <div class="panel-read" id="panel-read">
+      <b>COCKPIT</b> &nbsp; C: chase view &nbsp;·&nbsp; P: pause &nbsp;·&nbsp; M: sound
+    </div>
+  </div>
+</div>
+<div id="screen" class="hidden">
+  <div class="card">
+    <h1 id="screen-title">RIDGE RUNNER</h1>
+    <div id="screen-body"></div>
+    <div class="hint" id="screen-hint"></div>
+  </div>
+</div>
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>
